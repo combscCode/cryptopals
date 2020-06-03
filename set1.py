@@ -5,6 +5,8 @@ object each function acts upon (keeping strings and bytes
 and byte encodings straight is hard).'''
 import codecs
 import base64
+import operator
+from Crypto.Cipher import AES
 
 def bin_to_hex(bin_in):
     return bin_in.hex()
@@ -120,38 +122,50 @@ def transpose_blocks(blocks):
         transposed_blocks.append(transposed_block)
     return transposed_blocks
 
+def aes_ecb_decrypt(cipher_blob, aes_key):
+    cipher = AES.new(aes_key, AES.MODE_ECB)
+    return cipher.decrypt(cipher_blob)
+
+def aes_ecb_detect(cipher_blob):
+    '''Splits the cipher blob given into 16 byte chunks and counts the
+    number of times each chunk occurs. For AES in ECB mode we'd expect
+    to have a lot of the blobs be the same value since each 16 byte part
+    of the plaintext is encrypted in the exact same way. Returns the maximum
+    number of times some chunk was seen'''
+    chunks = [cipher_blob[i:i+16] for i in range(0, len(cipher_blob), 16)]
+    reps = len(chunks) - len(set(chunks))
+    return reps
+
 if __name__ == '__main__':
-    # print('Challenge 1:')
-    # print(hex_to_base64(
-    #     '49276d206b696c6c696e6720796f757220627261696e2'
-    #     '06c696b65206120706f69736f6e6f7573206d757368726f6f6d'
-    # ))
+    print('Challenge 1:')
+    print(hex_to_base64(
+        '49276d206b696c6c696e6720796f757220627261696e2'
+        '06c696b65206120706f69736f6e6f7573206d757368726f6f6d'
+    ))
 
-    # print('Challenge 2')
-    # print(fixed_xor(hex_to_bin('1c0111001f010100061a024b53535009181c'),
-    #                 hex_to_bin('686974207468652062756c6c277320657965')))
+    print('Challenge 2')
+    print(fixed_xor(hex_to_bin('1c0111001f010100061a024b53535009181c'),
+                    hex_to_bin('686974207468652062756c6c277320657965')))
 
-    # print('Challenge 3')
-    # print(find_xor_cipher_key(
-    #     '1b37373331363f78151b7f2b783431'
-    #     '333d78397828372d363c78373e783a393b3736')[0])
+    print('Challenge 3')
+    print(find_xor_cipher_key(
+        '1b37373331363f78151b7f2b783431'
+        '333d78397828372d363c78373e783a393b3736')[0])
 
-    # print('Challenge 4')
-    # info = []
-    # for line in open('challengedata4.txt'):
-    #     score, deciphered_bytes, cipher_key = find_xor_cipher_key(line[:-1])[0]
-    #     info.append((score, deciphered_bytes, cipher_key))
-    # print(sorted(info, reverse=True)[0])
+    print('Challenge 4')
+    info = []
+    for line in open('data1_4.txt'):
+        score, deciphered_bytes, cipher_key = find_xor_cipher_key(line[:-1])[0]
+        info.append((score, deciphered_bytes, cipher_key))
+    print(sorted(info, reverse=True)[0])
 
-    # print('Challenge 5')
-    # print(encrypt_repeating_xor("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal", 'ICE'))
+    print('Challenge 5')
+    print(encrypt_repeating_xor("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal", 'ICE'))
 
     print('Challenge 6')
-    # Assumptions: new lines should be deleted
-    # We concatenate each line into one big binary blob
     bin_blob = b''
-    for line in open('challengedata6.txt'):
-        bin_blob += base64_to_bin(line[:-1])
+    for line in open('data1_6.txt'):
+        bin_blob += base64_to_bin(line)
     distances = find_keysize_distances(bin_blob)
     # going to take the first 3 keysizes
     for d in range(3):
@@ -164,3 +178,20 @@ if __name__ == '__main__':
             cipher_key += chr(cipher_char)
         print(cipher_key)
     # found the key, it's "Terminator X: Bring the noise"
+
+    print('Challenge 7')
+    aes_key = b'YELLOW SUBMARINE'
+    encrypted_blob = b''
+    for line in open('data1_7.txt'):
+        encrypted_blob += base64_to_bin(line)
+    print(aes_ecb_decrypt(encrypted_blob, aes_key))
+
+    print('Challenge 8')
+    vals = [ aes_ecb_detect(hex_to_bin(line[:-1])) for line in (open('data1_8.txt'))]
+    max_val = 0
+    max_i = -1
+    for i, val in enumerate(vals):
+        if val > max_val:
+            max_val = val
+            max_i = i
+    print(max_val, max_i)
