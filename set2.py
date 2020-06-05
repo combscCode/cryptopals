@@ -7,7 +7,14 @@ from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_r
 def pkcs7(input_bytes, block_length=16):
     '''pad the input bytes according to pkcs#7 to an
     even multiple of the block length given'''
-    return input_bytes + b'\x04' * ((block_length - len(input_bytes)) % block_length)
+    padding_to_add = block_length - len(input_bytes) % block_length
+    return input_bytes + bytes([padding_to_add]) * padding_to_add
+
+def unpad(padded_bytes):
+    for i in range(1, 17):
+        if padded_bytes[-i:].count(bytes([i])) == i:
+            return padded_bytes.strip(bytes([i]))
+    return padded_bytes
 
 def aes_ecb_encrypt(plaintext_blob, aes_key):
     cipher = AES.new(aes_key, AES.MODE_ECB)
@@ -138,17 +145,95 @@ def crack_vulnerable_oracle(vulnerable_blackbox):
         last_known_bytes = last_known_bytes[1:] + unmasked_byte
     return known_secret
 
+def decode_url_to_dict(to_parse):
+    '''When given a string that contains key value pairs
+    seperated by '&' and joined by '=' creates a dictionary
+    containing those key value pairs'''
+    pairs = {}
+    list_of_pairs = to_parse.split('&')
+    for pair in list_of_pairs:
+        pair = pair.split('=')
+        pairs[pair[0]] = pair[1]
+    return pairs
 
+def encode_dict_to_url(dict_in):
+    protected_chars = ['=', '&']
+    to_append = []
+    for k, v in dict_in.items():
+        for prot in protected_chars:
+            k = str(k).replace(prot, '')
+            v = str(v).replace(prot, '')
+        to_append.append(k + '=' + v)
+    return '&'.join(to_append)
+
+def profile_for(email):
+    profile = {}
+    profile['email'] = email
+    profile['uid'] = 10
+    profile['role'] = 'user'
+    return encode_dict_to_url(profile)
+
+def profile_for_oracle(email):
+    encoded = profile_for(email).encode('ascii')
+    encoded = pkcs7(encoded)
+    return aes_ecb_encrypt(encoded, GLOBAL_RANDOM_KEY)
+
+def profile_decode_oracle(ciphertext):
+    decrypted = unpad(aes_ecb_decrypt(ciphertext, GLOBAL_RANDOM_KEY))
+    return decode_url_to_dict(decrypted.decode('ascii'))
+
+def create_profile_ciphertext(blackbox, preferred_email='buo@umich.edu'):
+    '''This function is used to break the profile_for function.
+    blackbox is a function which takes in user input to profile_for()
+    and returns the ciphertext encrypted under AES ECB.
+    This function looks to abuse a decoding function that turns encrypted
+    user profile strings into a user_profile object. The goal is to find a
+    ciphertext that allows us to have admin permissions.'''
+    # Because the 'role' aspect is on the back of the ciphertext
+    # we just have to figure out what the blocksize of the cipher
+    # is and what bytes are used to pad.
+    # Step 1: Find the blocksize of the algorithm
+    cipher = blackbox('A')
+    num_bytes = 1
+    last_cipher_length = len(cipher)
+    while len(cipher) == last_cipher_length:
+        last_cipher_length = len(cipher)
+        num_bytes += 1
+        cipher = blackbox('A' * num_bytes)
+    blocksize = len(cipher) - last_cipher_length
+    # We want to line up the last block such that it starts with
+    # what the role is equal to. st the last block is user + padding.
+    # we know by inserting num_bytes we get a new block of cipher text, so
+    # we need to do num_bytes + 4 to get the offset we want.
+    default_role = 'user'
+    bad_email = preferred_email
+    if len(bad_email) > num_bytes + len(default_role):
+        bad_email = bad_email[:num_bytes + len(default_role)]
+    if len(bad_email) < num_bytes + len(default_role):
+        bad_email += 'i' * (num_bytes + len(default_role) - len(bad_email))
+    # put adminpadding into block 2 (offset in the beginning to get around email=)
+    cipher = blackbox(bad_email)
+    cipher_blocks = [cipher[i:i+blocksize] for i in range(0, len(cipher), blocksize)]
+    payload = b'\x10' * (blocksize - 6) + b'admin' + b'\x0b' * (blocksize - 5)
+    new_cipher = blackbox(payload.decode('ascii'))
+    # replace the last block of the ciphertext with our admin padding block
+    cipher_blocks[-1] = new_cipher[blocksize:blocksize*2]
+    cipher = b''.join(cipher_blocks)
+    return cipher
 
 if __name__ == '__main__':
-    print('Challenge 9')
-    print(pkcs7(b'YELLOW SUBMARINE', 20))
+    # print('Challenge 9')
+    # print(pkcs7(b'YELLOW SUBMARINE', 20))
 
-    print('Challenge 10')
-    encrypted_blob = b''
-    for line in open('data2_10.txt'):
-        encrypted_blob += base64_to_bin(line)
-    print(aes_cbc_decrypt(encrypted_blob, b'YELLOW SUBMARINE'))
+    # print('Challenge 10')
+    # encrypted_blob = b''
+    # for line in open('data2_10.txt'):
+    #     encrypted_blob += base64_to_bin(line)
+    # print(aes_cbc_decrypt(encrypted_blob, b'YELLOW SUBMARINE'))
 
-    print('Challenge 12')
-    print(crack_vulnerable_oracle(vulnerable_oracle))
+    # print('Challenge 12')
+    # print(crack_vulnerable_oracle(vulnerable_oracle))
+
+    print('Challenge 13')
+    cipher = create_profile_ciphertext(profile_for_oracle)
+    print( profile_decode_oracle(cipher) )
