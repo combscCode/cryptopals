@@ -2,7 +2,7 @@
 import secrets
 import random
 from Crypto.Cipher import AES
-from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor
+from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor, hex_to_base64
 
 def pkcs7(input_bytes, block_length=16):
     '''pad the input bytes according to pkcs#7 to an
@@ -83,14 +83,16 @@ def detect_aes_mode(blackbox):
         return 'cbc'
 
 GLOBAL_RANDOM_KEY = generate_random_key()
-UNKNOWN_STRING = '''Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
+GLOBAL_UNKNOWN_STRING = '''Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg
 aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
 dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
 YnkK'''
 
+#GLOBAL_UNKNOWN_STRING = 'eWVsbG93IHN1Ym1hcmluZXMgZ28gc2xlZXBpbmcgd2l0aCB0aGUgZmlzaGVz'
+
 def vulnerable_oracle(plaintext_blob):
     '''This function is described here: https://cryptopals.com/sets/2/challenges/12'''
-    plaintext_blob = plaintext_blob + base64_to_bin(UNKNOWN_STRING)
+    plaintext_blob = plaintext_blob + base64_to_bin(GLOBAL_UNKNOWN_STRING)
     plaintext_blob = pkcs7(plaintext_blob)
     random_key = GLOBAL_RANDOM_KEY
     return aes_ecb_encrypt(plaintext_blob, random_key)
@@ -221,6 +223,106 @@ def create_profile_ciphertext(blackbox, preferred_email='buo@umich.edu'):
     cipher = b''.join(cipher_blocks)
     return cipher
 
+def harder_vulnerable_oracle(plaintext_blob):
+    '''This function is described here: https://cryptopals.com/sets/2/challenges/14
+    OK after looking at another solution I think I misunderstood the problem... Oh
+    well my problem was harder soooooo whatever'''
+    random_prefix = secrets.token_bytes(random.randint(0, 17))
+    return vulnerable_oracle(random_prefix + plaintext_blob)
+
+def crack_harder_vulnerable_oracle(blackbox):
+    # Step 1, find the blocksize of the algorithm
+    # Since the number of random bytes has no bound this algorithm is
+    # not guaranteed to get the correct blocksize. Getting 1000 random
+    # samples makes it pretty likely for any reasonable expected number
+    # of random bytes
+    cipher_lengths = set()
+    for _ in range(1000):
+        cipher = blackbox(b'')
+        cipher_lengths.add(len(cipher))
+    cipher_lengths = sorted(list(cipher_lengths))
+    cipher_differences = [cipher_lengths[i+1] - cipher_lengths[i] for i in range(len(cipher_lengths) - 1)]
+    if len(cipher_lengths) == 1:
+        blocksize = 16
+    else:
+        blocksize = min(cipher_differences)
+
+    # Step 2, find the start of the secret. We do this by making our message
+    # just the same byte over and over for enough blocks to differentiate between
+    # it and the secret.
+    
+    check_message = b''
+    cipher = blackbox(check_message)
+    cipher_blocks = [cipher[i:i + blocksize] for i in range(0, len(cipher), blocksize)]
+    # Find the number of repeat blocks in the cipher text. This is the maximum
+    # possible amount that can be in the secret message we're looking to get.
+    # Example, if there are 2 blocks that have the same val we want num_identifying_repeat_blocks
+    # to be 3. 
+    num_repeat_blocks_needed = len(cipher_blocks) - len(set(cipher_blocks)) + 2
+    known_chars = b'i' * (blocksize - 1)
+    secret = b''
+    secret_idx = 0
+    # Since we don't know the length of the secret we must stay in this
+    # loop until we can tell that we've hit the padding
+    while True:
+        print(secret)
+        # Construct dict of possible values that we can extract
+        possible_dict = {}
+        for possible_byte in range(256):
+            payload = known_chars + bytes([possible_byte])
+            # Now we need to put the repeating blocks into the payload.
+            # This should be structured st when there are num_repeat_blocks_needed
+            # repeating blocks in the cipher, we KNOW that the payload fits in a block
+            repeat_byte = 0 if possible_byte != 0 else 1
+            payload += bytes([repeat_byte]) * blocksize * num_repeat_blocks_needed + bytes([repeat_byte + 1])
+            # Now we need to give this payload to the blackbox until we get the block alignment we want
+            got_a_hit = False
+            while not got_a_hit:
+                cipher = blackbox(payload)
+                cipher_blocks = [cipher[i:i+blocksize] for i in range(0, len(cipher), blocksize)]
+                # Check to see if the number of repeating blocks is what we want
+                for block_idx in reversed(range(len(cipher_blocks) - num_repeat_blocks_needed)):
+                    # If we find the number of repeating blocks that we need
+                    if len(set(cipher_blocks[block_idx:block_idx + num_repeat_blocks_needed])) == 1:
+                        payload_idx = block_idx - 1
+                        possible_dict[cipher_blocks[payload_idx]] = bytes([possible_byte])
+                        got_a_hit = True
+                        break
+        # We now have constructed a dict of possible values that we can extract
+        # Need to actually see what the secret char is now...
+        # We're going to ping the blackbox with our attack message until we get the
+        # number of repeating blocks in the cipher ST the payload fits in a block
+        num_of_known_char_bytes_to_include = (blocksize - secret_idx - 1) % blocksize
+        chars_to_include = known_chars[:num_of_known_char_bytes_to_include]
+
+        repeat_byte = 0 if known_chars[0] != 0 else 1
+        attack_message = bytes([repeat_byte + 1]) * blocksize + bytes([repeat_byte]) * blocksize * num_repeat_blocks_needed + chars_to_include
+        got_a_hit = False
+        while not got_a_hit:
+            cipher = blackbox(attack_message)
+            cipher_blocks = [cipher[i:i+blocksize] for i in range(0, len(cipher), blocksize)]
+            # Check to see if the number of repeating blocks is what we want
+            for block_idx in reversed(range(len(cipher_blocks) - num_repeat_blocks_needed)):
+                # If we find the number of repeating blocks that we need
+                if len(set(cipher_blocks[block_idx:block_idx + num_repeat_blocks_needed])) == 1:
+                    # We know that the known_chars block is at the end of the repeating blocks
+                    payload_block_idx = block_idx + num_repeat_blocks_needed + (secret_idx // blocksize)
+                    payload_block = cipher_blocks[payload_block_idx]
+                    if payload_block not in possible_dict:
+                        # This can happen when we've hit the padding. Since the padding values will change
+                        # the payload block will not be in the possible_dict and so we can return our secret.
+                        return secret[:-1]
+                    secret_byte = possible_dict[payload_block]
+                    got_a_hit = True
+                    secret_idx += 1
+                    secret += secret_byte
+                    known_chars = known_chars[1:] + secret_byte
+                    # We know that the secret has been completely extracted if we're at the end of the cipher
+                    if block_idx + num_repeat_blocks_needed + (secret_idx // blocksize) == len(cipher_blocks):
+                        secret_extracted = True
+                    break
+    return secret
+
 if __name__ == '__main__':
     # print('Challenge 9')
     # print(pkcs7(b'YELLOW SUBMARINE', 20))
@@ -234,6 +336,10 @@ if __name__ == '__main__':
     # print('Challenge 12')
     # print(crack_vulnerable_oracle(vulnerable_oracle))
 
-    print('Challenge 13')
-    cipher = create_profile_ciphertext(profile_for_oracle)
-    print( profile_decode_oracle(cipher) )
+    # print('Challenge 13')
+    # cipher = create_profile_ciphertext(profile_for_oracle)
+    # print( profile_decode_oracle(cipher) )
+
+    print('Challenge 14')
+    possible = crack_harder_vulnerable_oracle(harder_vulnerable_oracle)
+    print(possible)
