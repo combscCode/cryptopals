@@ -2,7 +2,7 @@
 import secrets
 import random
 from Crypto.Cipher import AES
-from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor, hex_to_base64
+from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor
 
 def pkcs7(input_bytes, block_length=16):
     '''pad the input bytes according to pkcs#7 to an
@@ -322,6 +322,19 @@ def crack_harder_vulnerable_oracle(blackbox):
                         secret_extracted = True
                     break
     return secret
+
+def validate_pkcs7(string_to_validate, blocksize=16):
+    '''This function throws an exception if
+    the string does not have valid padding'''
+    blocks = [string_to_validate[i:i + blocksize] for i in range(0, len(string_to_validate), blocksize)]
+    invalid = True
+    for i in range(1, blocksize + 1):
+        #print(blocks[-1][-i:])
+        if blocks[-1][-i:] == (bytes([i]) * i):
+            invalid = False
+    if invalid:
+        print(string_to_validate)
+        raise ValueError()
 
 if __name__ == '__main__':
     # print('Challenge 9')
