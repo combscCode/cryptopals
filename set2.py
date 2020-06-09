@@ -91,8 +91,6 @@ aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq
 dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg
 YnkK'''
 
-#GLOBAL_UNKNOWN_STRING = 'eWVsbG93IHN1Ym1hcmluZXMgZ28gc2xlZXBpbmcgd2l0aCB0aGUgZmlzaGVz'
-
 def vulnerable_oracle(plaintext_blob):
     '''This function is described here: https://cryptopals.com/sets/2/challenges/12'''
     plaintext_blob = plaintext_blob + base64_to_bin(GLOBAL_UNKNOWN_STRING)
@@ -145,6 +143,9 @@ def crack_vulnerable_oracle(vulnerable_blackbox):
         cipher_block_start = (secret_idx // blocksize) * blocksize
         cipher_block_end = cipher_block_start + blocksize
         cipher_block = ciphertext[cipher_block_start:cipher_block_end]
+        if cipher_block not in possible_dict:
+            # We've hit the padding
+            return known_secret
         unmasked_byte = bytes([possible_dict[cipher_block][-1]])
         known_secret += unmasked_byte
         last_known_bytes = last_known_bytes[1:] + unmasked_byte
@@ -234,6 +235,10 @@ def harder_vulnerable_oracle(plaintext_blob):
     return vulnerable_oracle(random_prefix + plaintext_blob)
 
 def crack_harder_vulnerable_oracle(blackbox):
+    '''Please note, I misunderstood the question and broke a HARDER problem than challenge 14.
+    Instead of using a constant random prefix, the random prefix is calculated everytime the
+    oracle is called. This makes cracking the secret significantly harder and requires more
+    time'''
     # Step 1, find the blocksize of the algorithm
     # Since the number of random bytes has no bound this algorithm is
     # not guaranteed to get the correct blocksize. Getting 1000 random
@@ -365,6 +370,10 @@ def cbc_bitflip_attack():
     This technique also requires us to know the exact string that is being encrypted. If we did not know
     we could theoretically try all bitflip possibilities until we got the decrypted value we wanted, but this
     would grow O(2^n) where n is the bitlength of the message we want to construct in the plaintext.
+
+    I could also construct the message entirely in the string_in parameter, that'd probably be better
+    in the future since my current attack relies on knowing where the block boundaries lie. I can
+    better control this by giving the encryption function my own string of any length.
     '''
     cipher = challenge_16_encrypt('true')
     cipher = bytearray(cipher)
@@ -377,25 +386,25 @@ def cbc_bitflip_attack():
     return cipher
 
 if __name__ == '__main__':
-    # print('Challenge 9')
-    # print(pkcs7(b'YELLOW SUBMARINE', 20))
+    print('Challenge 9')
+    print(pkcs7(b'YELLOW SUBMARINE', 20))
 
-    # print('Challenge 10')
-    # encrypted_blob = b''
-    # for line in open('data2_10.txt'):
-    #     encrypted_blob += base64_to_bin(line)
-    # print(aes_cbc_decrypt(encrypted_blob, b'YELLOW SUBMARINE'))
+    print('Challenge 10')
+    encrypted_blob = b''
+    for line in open('data2_10.txt'):
+        encrypted_blob += base64_to_bin(line)
+    print(aes_cbc_decrypt(encrypted_blob, b'YELLOW SUBMARINE'))
 
-    # print('Challenge 12')
-    # print(crack_vulnerable_oracle(vulnerable_oracle))
+    print('Challenge 12')
+    print(crack_vulnerable_oracle(vulnerable_oracle))
 
-    # print('Challenge 13')
-    # cipher = create_profile_ciphertext(profile_for_oracle)
-    # print( profile_decode_oracle(cipher) )
+    print('Challenge 13')
+    cipher = create_profile_ciphertext(profile_for_oracle)
+    print( profile_decode_oracle(cipher) )
 
-    # print('Challenge 14')
-    # possible = crack_harder_vulnerable_oracle(harder_vulnerable_oracle)
-    # print(possible)
+    print('Challenge 14')
+    possible = crack_harder_vulnerable_oracle(harder_vulnerable_oracle)
+    print(possible)
 
     print('Challenge 16')
     print(challenge_16_detect_admin(cbc_bitflip_attack()))
