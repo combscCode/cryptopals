@@ -10,6 +10,9 @@ def pkcs7(input_bytes, block_length=16):
     padding_to_add = block_length - len(input_bytes) % block_length
     return input_bytes + bytes([padding_to_add]) * padding_to_add
 
+def blockify(cipher, blocksize=16):
+    return [cipher[i:i+blocksize] for i in range(0, len(cipher), blocksize)]
+
 def unpad(padded_bytes):
     for i in range(1, 17):
         if padded_bytes[-i:].count(bytes([i])) == i:
@@ -336,6 +339,43 @@ def validate_pkcs7(string_to_validate, blocksize=16):
         print(string_to_validate)
         raise ValueError()
 
+challenge_16_aes_key = generate_random_key()
+def challenge_16_encrypt(string_in):
+    to_return = 'comment1=cooking%20MCs;userdata=' + string_in.replace('=', '%3d').replace(';', '%3b') + ';comment2=%20like%20a%20pound%20of%20bacon'
+    to_return = str.encode(to_return)
+    
+    return aes_cbc_encrypt(to_return, challenge_16_aes_key)
+
+def challenge_16_detect_admin(cipher):
+    decrypted = aes_cbc_decrypt(cipher, challenge_16_aes_key)
+    return decrypted.count(b";admin=true") > 0
+
+def cbc_bitflip_attack():
+    '''
+    In this function we use the bitflip property of CBC encryption to construct a message
+    in the plaintext by editing the ciphertext we are given from the encryption function.
+    userdata= happens to fall on a blockbreak. If we give the encrypt function the string
+    'true', we now have the plaintext decrypt to something + ;userdata=true + something_else.
+    Since we know what the plaintext decrypts to and we know what we want it to decrypt to,
+    we can use the bitflipping attack by fiddling with the block prior to ;userdata= in order
+    to turn it into ;admin=.
+    Anything that we want to edit in one block means the block prior must be turned to gibberish.
+    This technique means we cannot have 2 contiguous blocks that we edit meaningfully (although
+    we could have 2 seperate blocks that we edit as long as they are not next to each other)
+    This technique also requires us to know the exact string that is being encrypted. If we did not know
+    we could theoretically try all bitflip possibilities until we got the decrypted value we wanted, but this
+    would grow O(2^n) where n is the bitlength of the message we want to construct in the plaintext.
+    '''
+    cipher = challenge_16_encrypt('true')
+    cipher = bytearray(cipher)
+    starting = bytearray('erdata'.encode('ascii'))
+    looking_to_build = bytearray(';admin'.encode('ascii'))
+    idx = 9
+    for a, b in zip(starting, looking_to_build):
+        cipher[idx] = cipher[idx] ^ (a ^ b)
+        idx += 1
+    return cipher
+
 if __name__ == '__main__':
     # print('Challenge 9')
     # print(pkcs7(b'YELLOW SUBMARINE', 20))
@@ -353,6 +393,9 @@ if __name__ == '__main__':
     # cipher = create_profile_ciphertext(profile_for_oracle)
     # print( profile_decode_oracle(cipher) )
 
-    print('Challenge 14')
-    possible = crack_harder_vulnerable_oracle(harder_vulnerable_oracle)
-    print(possible)
+    # print('Challenge 14')
+    # possible = crack_harder_vulnerable_oracle(harder_vulnerable_oracle)
+    # print(possible)
+
+    print('Challenge 16')
+    print(challenge_16_detect_admin(cbc_bitflip_attack()))
