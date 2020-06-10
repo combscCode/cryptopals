@@ -28,8 +28,8 @@ def aes_cbc_encrypt(plaintext_blob, aes_key, iv=None):
     if iv is None:
         iv = b'\x00' * 16
     ciphertext = b''
+    plaintext_blob = pkcs7(plaintext_blob)
     plaintext_blocks = [plaintext_blob[i:i+16] for i in range(0, len(plaintext_blob), 16)]
-    plaintext_blocks[-1] = pkcs7(plaintext_blocks[-1], 16)
 
     to_xor = iv
     for block in plaintext_blocks:
@@ -337,11 +337,9 @@ def validate_pkcs7(string_to_validate, blocksize=16):
     blocks = [string_to_validate[i:i + blocksize] for i in range(0, len(string_to_validate), blocksize)]
     invalid = True
     for i in range(1, blocksize + 1):
-        #print(blocks[-1][-i:])
         if blocks[-1][-i:] == (bytes([i]) * i):
             invalid = False
     if invalid:
-        print(string_to_validate)
         raise ValueError()
 
 challenge_16_aes_key = generate_random_key()
