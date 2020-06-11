@@ -2,7 +2,7 @@
 import secrets
 import random
 from Crypto.Cipher import AES
-from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor
+from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor, english_score
 from set2 import pkcs7, validate_pkcs7, blockify, aes_cbc_encrypt, aes_cbc_decrypt, aes_ecb_encrypt, generate_random_key, unpad
 
 GLOBAL_RANDOM_KEY = generate_random_key()
@@ -114,6 +114,46 @@ def decrypt_cookie(validator, iv=None):
         plaintext_chunk = bytes([i ^ j ^ k for i, j, k in zip(previous_block, V, bytearray(b'\x10' * 16))])
         plaintext = plaintext_chunk + plaintext
     return plaintext
+
+def aes_ctr(binary_blob, aes_key, nonce=0):
+    '''
+    Implements stream cipher mode AES
+    '''
+    nonce = nonce.to_bytes(8, byteorder='little')
+    keystream = b''
+    counter = 0
+    while len(keystream) < len(binary_blob):
+        keystream += aes_ecb_encrypt(nonce + counter.to_bytes(8, byteorder='little'), aes_key)
+        counter += 1
+    return bytes([a ^ b for a, b in zip(binary_blob, keystream)])
+
+
 if __name__ == '__main__':
     print('Challenge 17')
     print(unpad(decrypt_cookie(consume_cookie, iv=generate_random_key())))
+
+    print('Challenge 18')
+    secret_string = 'L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ=='
+    print(aes_ctr(base64_to_bin(secret_string), b'YELLOW SUBMARINE'))
+    for thing in [b'yellowsubmarinepotato', b'bellowsubmarinepotato', b'my names j millz dont mean to be rude no better way than me to conclude']:
+        print(aes_ctr(thing, b'YELLOW SUBMARINE'))
+        print(aes_ctr(aes_ctr(thing, b'YELLOW SUBMARINE'), b'YELLOW SUBMARINE'))
+
+    print('Challenge 19')
+    ciphers = []
+    random_key = generate_random_key()
+    for line in open('data3_19.txt'):
+        ciphers.append(aes_ctr(base64_to_bin(line), random_key))
+
+    max_cipher_length = max([len(cipher) for cipher in ciphers])
+    first_guess_keystream = b''
+    for cipher_idx in range(max_cipher_length):
+        scores = []
+        for candidate_byte in range(256):
+            cipher_slice = [cipher[cipher_idx] for cipher in ciphers if cipher_idx < len(cipher)]
+            scores.append( (english_score(b''.join([bytes([cipher_byte ^ candidate_byte]) for cipher_byte in cipher_slice])), candidate_byte))
+        scores = sorted(scores, reverse=True)
+        first_guess_keystream += bytes([scores[0][1]])
+    print("First guess for our keystream:", first_guess_keystream)
+    for cipher in ciphers:
+        print(b''.join([bytes([a ^ b]) for a, b in zip(cipher, first_guess_keystream)]))
