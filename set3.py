@@ -1,6 +1,7 @@
 '''set2 solutions for cryptopals'''
 import secrets
 import random
+import time
 from Crypto.Cipher import AES
 from set1 import bin_to_hex, hex_to_bin, hex_to_base64, base64_to_bin, encrypt_repeating_xor, aes_ecb_decrypt, fixed_xor, english_score
 from set2 import pkcs7, validate_pkcs7, blockify, aes_cbc_encrypt, aes_cbc_decrypt, aes_ecb_encrypt, generate_random_key, unpad
@@ -143,10 +144,68 @@ def crack_aes_ctr_bad_nonce(ciphers):
         keystream += bytes([scores[0][1]])
     return keystream
 
-def mersenne_twister():
+def mersenne_twister_generator(seed, w=32, n=624, m=397, r=31, a=0x9908b0df, b=0x9d2c5680, c=0xefc60000, s=7, t=15, u=11, d=0xffffffff, l=18):
     '''
     This function implements the MT19937 Mersenne Twister as described on wikipedia.
+    This function returns a PRNG, when called it will return an integer.
+
+        w: word size (in bits)
+        n: degree of recurrence
+        m: middle word, an offset used in the recurrence relation defining the series x, 1 ≤ m < n
+        r: separation point of one word, or the number of bits of the lower bitmask, 0 ≤ r ≤ w - 1
+        a: coefficients of the rational normal form twist matrix
+        b, c: TGFSR(R) tempering bitmasks
+        s, t: TGFSR(R) tempering bit shifts
+        u, d, l: additional Mersenne Twister tempering bit shifts/masks
     '''
+
+    # Initialization
+    f = 1812433253
+    state = [0 for _ in range(n)]
+    index = n + 1
+    upper_bitmask = ((1 << w) - 1) - ((1 << r) +  - 1)
+    lower_bitmask = ((1 << r) - 1)
+
+    def seed_mt(s):
+        nonlocal index
+        index = n
+        state[0] = s
+        for i in range(1, n):
+            state[i] = ((1 << w) - 1) & (f * (state[i-1] ^ (state[i-1] >> (w-2))) + i)
+
+    def extract_number():
+        nonlocal index
+        if index == n:
+            twist()
+        y = state[index]
+        y = y ^ ((y >> u) & d)
+        y = y ^ ((y << s) & b)
+        y = y ^ ((y << t) & c)
+        y = y ^ (y >> 1)
+
+        index += 1
+        return ((1 << w) - 1) & y
+    
+    def twist():
+        nonlocal index
+        for i in range(n):
+            x = (state[i] & upper_bitmask) + (state[(i + 1) % n] & lower_bitmask)
+            xA = x >> 1
+            if x % 2 != 0:
+                xA ^= a
+            state[i] = state[(i + m) % n] ^ xA
+        index = 0
+    
+    seed_mt(seed)
+    return extract_number
+
+
+def wait_and_seed_twister(min_time = 1, max_time = 10):
+    print("Starting wait at", int(time.time()))
+    time_to_wait = random.randint(min_time, max_time)
+    time.sleep(time_to_wait)
+    return mersenne_twister_generator(int(time.time())) 
+
 
 if __name__ == '__main__':
     # print('Challenge 17')
@@ -181,47 +240,62 @@ if __name__ == '__main__':
     # ok so it turns out my previous approach is just what they wanted for challenge 20... I guess I'll just turn it into a function?
     # this statistical analysis seems way easier once I already have the english score function written. Guessing and checking
     # is a waste of my time...
-    print('Challenge 20')
-    ciphers = []
-    ctr_key = b'YELLOW SUBMARINE'
-    for line in open('data3_20.txt'):
-        ciphers.append(aes_ctr(base64_to_bin(line), ctr_key))
-    keystream = crack_aes_ctr_bad_nonce(ciphers)
-    print(keystream)
-    # Not quite right though... going to go through and fix the end of the text where there is little data for
-    # the statistical approach to be correct.
-    keystream = bytearray(keystream)
-    #keystream[0] += 32
-    #Worse than a nightmare, you don't have to sleep a wink / The pain's a migraine every time ya thi
-    # turn 96 from an i to an n, thiik should be think
-    keystream[96] ^= 105 ^ 110
+    # print('Challenge 20')
+    # ciphers = []
+    # ctr_key = b'YELLOW SUBMARINE'
+    # for line in open('data3_20.txt'):
+    #     ciphers.append(aes_ctr(base64_to_bin(line), ctr_key))
+    # keystream = crack_aes_ctr_bad_nonce(ciphers)
+    # print(keystream)
+    # # Not quite right though... going to go through and fix the end of the text where there is little data for
+    # # the statistical approach to be correct.
+    # keystream = bytearray(keystream)
+    # #keystream[0] += 32
+    # #Worse than a nightmare, you don't have to sleep a wink / The pain's a migraine every time ya thi
+    # # turn 96 from an i to an n, thiik should be think
+    # keystream[96] ^= 105 ^ 110
 
-    # paid in fuyl
-    # ya think
-    # this should be paid in full
-    keystream[101] ^= ord('Y') ^ ord('l')
+    # # paid in fuyl
+    # # ya think
+    # # this should be paid in full
+    # keystream[101] ^= ord('Y') ^ ord('l')
 
-    # me rest in peact
-    # paid in full
-    # peact should be peace
-    keystream[105] ^= ord('t') ^ ord('e')
-    # Looked up the lyrics on google, two lines of ciphertext is not enough
-    # information to find the plaintext by statistical analysis alone.
-    keystream[107] ^= ord('T') ^ ord('t')
-    keystream[108] ^= ord('e') ^ ord('h')
-    keystream[109] ^= ord(' ') ^ ord('e')
-    keystream[111] ^= ord('l') ^ ord('m')
-    keystream[112] ^= ord('E') ^ ord('o')
-    keystream[113] ^= ord('E') ^ ord('n')
-    keystream[114] ^= ord('E') ^ ord('e')
-    keystream[115] ^= ord('t') ^ ord('y')
+    # # me rest in peact
+    # # paid in full
+    # # peact should be peace
+    # keystream[105] ^= ord('t') ^ ord('e')
+    # # Looked up the lyrics on google, two lines of ciphertext is not enough
+    # # information to find the plaintext by statistical analysis alone.
+    # keystream[107] ^= ord('T') ^ ord('t')
+    # keystream[108] ^= ord('e') ^ ord('h')
+    # keystream[109] ^= ord(' ') ^ ord('e')
+    # keystream[111] ^= ord('l') ^ ord('m')
+    # keystream[112] ^= ord('E') ^ ord('o')
+    # keystream[113] ^= ord('E') ^ ord('n')
+    # keystream[114] ^= ord('E') ^ ord('e')
+    # keystream[115] ^= ord('t') ^ ord('y')
 
-    keystream = bytes(keystream)
-    plaintexts = []
-    for cipher in ciphers:
-        plaintexts.append(b''.join([bytes([a ^ b]) for a, b in zip(cipher, keystream)]))
-    print("Keystream:", keystream)
-    print("Plaintexts:")
-    for plaintext in plaintexts:
-        print(plaintext)
-    
+    # keystream = bytes(keystream)
+    # plaintexts = []
+    # for cipher in ciphers:
+    #     plaintexts.append(b''.join([bytes([a ^ b]) for a, b in zip(cipher, keystream)]))
+    # print("Keystream:", keystream)
+    # print("Plaintexts:")
+    # for plaintext in plaintexts:
+    #     print(plaintext)
+
+    print('Challenge 21')
+    # #min_time = 40
+    # #max_time = 1000
+    # #prng = wait_and_seed_twister(min_time, max_time)
+    # #time.sleep(random.randint(min_time, max_time))
+    # #print("here's the number:", prng())
+    # # Generated number: 1897012445
+    # # time that we started waiting: 1592151524
+    looking_for = 1897012445
+    for t in range(1592151524, (1592151524 + 3000)):
+        prng = mersenne_twister_generator(t)
+        if prng() == looking_for:
+            print("seed we're looking for is", t)
+            break
+    print(mersenne_twister_generator(1592152524)())
