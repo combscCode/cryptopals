@@ -181,7 +181,7 @@ def mersenne_twister_generator(seed, w=32, n=624, m=397, r=31, a=0x9908b0df, b=0
         y = y ^ ((y >> u) & d)
         y = y ^ ((y << s) & b)
         y = y ^ ((y << t) & c)
-        y = y ^ (y >> 1)
+        y = y ^ (y >> l)
 
         index += 1
         return ((1 << w) - 1) & y
@@ -204,7 +204,80 @@ def wait_and_seed_twister(min_time = 1, max_time = 10):
     print("Starting wait at", int(time.time()))
     time_to_wait = random.randint(min_time, max_time)
     time.sleep(time_to_wait)
-    return mersenne_twister_generator(int(time.time())) 
+    return mersenne_twister_generator(int(time.time()))
+
+def temper(y, w=32, b=0x9d2c5680, c=0xefc60000, s=7, t=15, u=11, d=0xffffffff, l=18):
+        y = y ^ ((y >> u) & d)
+        y = y ^ ((y << s) & b)
+        y = y ^ ((y << t) & c)
+        y = y ^ (y >> l)
+
+        return ((1 << w) - 1) & y
+
+# Borrowed from https://cypher.codes/writing/cryptopals-challenge-set-3
+# I really just could not figure out how to inverse some of these functions... I am dumb :c
+def unshift_right_xor(value, shift):
+    result = 0
+    for i in range(32 // shift + 1):
+        result ^= value >> (shift * i)
+    return result
+
+def unshift_left_mask_xor(value, shift, mask):
+    result = 0
+    for i in range(0, 32 // shift + 1):
+        part_mask = (0xffffffff >> (32 - shift)) << (shift * i)
+        part = value & part_mask
+        value ^= (part << shift) & mask
+        result |= part
+    return result
+
+def untemper(y):
+    value = y
+    value = unshift_right_xor(value, 18)
+    value = unshift_left_mask_xor(value, 15, 4022730752)
+    value = unshift_left_mask_xor(value, 7, 2636928640)
+    value = unshift_right_xor(value, 11)
+    return value
+
+def clone_mt19937(prng, w=32, n=624, m=397, r=31, a=0x9908b0df, b=0x9d2c5680, c=0xefc60000, s=7, t=15, u=11, d=0xffffffff, l=18):
+    '''
+    This function takes in a function that implements mt19937
+    and clones the internal state. prng is assumed to be a function
+    that we can call like prng() to extract a number
+    '''
+    state = []
+    for i in range(n):
+        state.append(untemper(prng()))
+
+    # Initialization
+    index = n
+    upper_bitmask = ((1 << w) - 1) - ((1 << r) +  - 1)
+    lower_bitmask = ((1 << r) - 1)
+
+    def extract_number():
+        nonlocal index
+        if index == n:
+            twist()
+        y = state[index]
+        y = y ^ ((y >> u) & d)
+        y = y ^ ((y << s) & b)
+        y = y ^ ((y << t) & c)
+        y = y ^ (y >> l)
+
+        index += 1
+        return ((1 << w) - 1) & y
+    
+    def twist():
+        nonlocal index
+        for i in range(n):
+            x = (state[i] & upper_bitmask) + (state[(i + 1) % n] & lower_bitmask)
+            xA = x >> 1
+            if x % 2 != 0:
+                xA ^= a
+            state[i] = state[(i + m) % n] ^ xA
+        index = 0
+    
+    return extract_number
 
 
 if __name__ == '__main__':
@@ -284,18 +357,27 @@ if __name__ == '__main__':
     # for plaintext in plaintexts:
     #     print(plaintext)
 
-    print('Challenge 21')
-    # #min_time = 40
-    # #max_time = 1000
-    # #prng = wait_and_seed_twister(min_time, max_time)
-    # #time.sleep(random.randint(min_time, max_time))
-    # #print("here's the number:", prng())
-    # # Generated number: 1897012445
-    # # time that we started waiting: 1592151524
-    looking_for = 1897012445
-    for t in range(1592151524, (1592151524 + 3000)):
-        prng = mersenne_twister_generator(t)
-        if prng() == looking_for:
-            print("seed we're looking for is", t)
-            break
-    print(mersenne_twister_generator(1592152524)())
+    # print('Challenge 22')
+    # min_time = 40
+    # max_time = 1000
+    # prng = wait_and_seed_twister(min_time, max_time)
+    # time.sleep(random.randint(min_time, max_time))
+    # print("here's the number:", prng())
+    # '''
+    # Generated number: 1897012445
+    # time that we started waiting: 1592151524
+    # '''
+    # looking_for = 1897012445
+    # for t in range(1592151524, (1592151524 + 3000)):
+    #     prng = mersenne_twister_generator(t)
+    #     if prng() == looking_for:
+    #         print("seed we're looking for is", t)
+    #         break
+    # print(mersenne_twister_generator(1592152524)())
+
+    # print('Challenge 23')
+    # prng = mersenne_twister_generator(500)
+    # cloned = clone_mt19937(prng)
+    # for _ in range(5):
+    #     print(prng())
+    #     print(cloned())
