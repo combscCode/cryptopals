@@ -375,9 +375,9 @@ if __name__ == '__main__':
     #         break
     # print(mersenne_twister_generator(1592152524)())
 
-    # print('Challenge 23')
-    # prng = mersenne_twister_generator(500)
-    # cloned = clone_mt19937(prng)
-    # for _ in range(5):
-    #     print(prng())
-    #     print(cloned())
+    print('Challenge 23')
+    prng = mersenne_twister_generator(500)
+    cloned = clone_mt19937(prng)
+    for _ in range(5):
+        print(prng())
+        print(cloned())
