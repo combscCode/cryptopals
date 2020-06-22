@@ -279,6 +279,49 @@ def clone_mt19937(prng, w=32, n=624, m=397, r=31, a=0x9908b0df, b=0x9d2c5680, c=
     
     return extract_number
 
+def mt19937_encrypt(binary_blob, seed):
+    prng = mersenne_twister_generator(seed)
+    keystream = bytearray()
+    while len(keystream) < len(binary_blob):
+        val = prng()
+        for _ in range(4):
+            keystream.append(val % 256)
+            val //= 256
+    return bytes([a ^ b for a, b in zip(binary_blob, keystream)])
+
+
+def crack_mt19937_encryption():
+    '''
+    recovers seed from a bad encryption
+    '''
+    secret_seed = random.randint(0, 2**16 - 1)
+    num_of_rand_chars = random.randint(0, 100)
+    print('secret seed is', secret_seed)
+    known_plaintext = b'A' * 14
+    random_chars = secrets.token_bytes(num_of_rand_chars)
+    ciphertext = mt19937_encrypt(random_chars + known_plaintext, secret_seed)
+
+    # We're just gonna brute force it...
+    for seed in range(2**16):
+        decrypted = mt19937_encrypt(ciphertext, seed)
+        if decrypted[-14:] == known_plaintext:
+            print('found secret seed to be', seed)
+            return seed
+    return -1
+
+def generate_bad_token():
+    '''
+    generates a 'password reset token' using mt19937 seeded with the
+    current unix time
+    '''
+    return mersenne_twister_generator(int(time.time()))()
+
+def check_bad_mt(val, seed):
+    '''
+    checks to see if the value was generated with a mt19937 seeded with
+    the given seed
+    '''
+    return val == mersenne_twister_generator(seed)()
 
 if __name__ == '__main__':
     # print('Challenge 17')
@@ -375,9 +418,16 @@ if __name__ == '__main__':
     #         break
     # print(mersenne_twister_generator(1592152524)())
 
-    print('Challenge 23')
-    prng = mersenne_twister_generator(500)
-    cloned = clone_mt19937(prng)
-    for _ in range(5):
-        print(prng())
-        print(cloned())
+    # print('Challenge 23')
+    # prng = mersenne_twister_generator(500)
+    # cloned = clone_mt19937(prng)
+    # for _ in range(5):
+    #     print(prng())
+    #     print(cloned())
+
+    print('Challenge 24')
+    print(mt19937_encrypt(mt19937_encrypt(b'yellow submarine is in the oceans', 15), 15))
+    crack_mt19937_encryption()
+
+    val = generate_bad_token()
+    print(check_bad_mt(val, int(time.time())))
