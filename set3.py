@@ -1,4 +1,4 @@
-'''set2 solutions for cryptopals'''
+'''set3 solutions for cryptopals'''
 import secrets
 import random
 import time
