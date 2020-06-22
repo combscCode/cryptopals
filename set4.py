@@ -60,6 +60,29 @@ def break_ctr_api(plaintext, ctr_key=None):
     b_cipher = api(0, b_plaintext)
     return bytes([a ^ b ^ c for a, b, c in zip(a_cipher, b_cipher, b_plaintext)])
 
+challenge_26_aes_key = generate_random_key()
+def challenge_26_encrypt(string_in):
+    to_return = 'comment1=cooking%20MCs;userdata=' + string_in.replace('=', '%3d').replace(';', '%3b') + ';comment2=%20like%20a%20pound%20of%20bacon'
+    to_return = str.encode(to_return)
+    
+    return aes_ctr(to_return, challenge_26_aes_key)
+
+def challenge_26_detect_admin(cipher):
+    decrypted = aes_ctr(cipher, challenge_26_aes_key)
+    return decrypted.count(b";admin=true") > 0
+
+def ctr_bitflip_attack():
+    '''
+    We can just xor the ciphertext to get what we want when it's decrypted.
+    If the attacker knows the plaintext and the location of the plaintext
+    they can change the ciphertext to decrypt to anything they want.
+    '''
+    cipher = challenge_26_encrypt('_admin_true')
+    cipher = bytearray(cipher)
+    cipher[32] ^= ord('_') ^ ord(';')
+    cipher[38] ^= ord('_') ^ ord('=')
+    return challenge_26_detect_admin(cipher)
+
 if __name__ == '__main__':
     print("Begin set 4 solutions")
     print('Challenge 25')
@@ -69,3 +92,6 @@ if __name__ == '__main__':
         data_blob += base64_to_bin(line)
 
     print('did our attack work?:', data_blob == break_ctr_api(data_blob))
+
+    print('Challenge 26')
+    print(ctr_bitflip_attack())
