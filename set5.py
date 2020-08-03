@@ -22,7 +22,7 @@ def dh(p=default_p, g=2):
     assert s == pow(A, b, p)
     m = hashlib.sha256()
     m.update(s.to_bytes((int.bit_length(s) + 7) // 8, byteorder="big"))
-    return m.digest()
+    return a, A, b, B, m.digest()
 
 if __name__ == "__main__":
     print("Challenge 33")
